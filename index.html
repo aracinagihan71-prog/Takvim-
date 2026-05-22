@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <title>Takvimim</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background: linear-gradient(135deg,#1a1a2e,#0f3460); min-height:100vh; font-family: Georgia, serif; display:flex; justify-content:center; padding:20px 0; }
+    #app { width:100%; max-width:420px; background:#fff; border-radius:24px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.4); height:fit-content; }
+    .sekmeler { display:flex; background:#1a1a2e; }
+    .sekme { flex:1; padding:15px; border:none; background:transparent; font-family:Georgia,serif; font-size:14px; cursor:pointer; color:#8888aa; border-bottom:3px solid transparent; }
+    .sekme.aktif { color:#fff; border-bottom:3px solid #e94560; background:rgba(233,69,96,0.1); }
+    .ay-bar { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; background:#f4f4f9; border-bottom:1px solid #e0e0e8; }
+    .ay-bar b { font-size:17px; color:#1a1a2e; letter-spacing:1px; }
+    .nav-btn { width:34px; height:34px; border:none; background:#1a1a2e; color:#fff; border-radius:50%; font-size:20px; cursor:pointer; }
+    .grid7 { display:grid; grid-template-columns:repeat(7,1fr); padding:8px 6px 2px; }
+    .gun-baslik { text-align:center; font-size:11px; color:#aaa; font-weight:bold; padding:3px 0; }
+    .gunler { display:grid; grid-template-columns:repeat(7,1fr); padding:0 6px 8px; }
+    .bos { height:42px; }
+    .gun-btn { height:42px; border:none; background:transparent; border-radius:8px; cursor:pointer; font-size:14px; font-family:Georgia,serif; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .gun-btn.secili { background:#1a1a2e; color:#fff; }
+    .gun-btn.bugun { outline:2px solid #e94560; }
+    .nokta { width:5px; height:5px; background:#e94560; border-radius:50%; position:absolute; bottom:4px; }
+    .not-alani { margin:12px; background:#f4f4f9; border-radius:14px; padding:14px; min-height:90px; }
+    .not-alani-baslik { font-size:13px; font-weight:bold; color:#1a1a2e; margin-bottom:8px; }
+    .not-metni { font-size:14px; color:#333; line-height:1.7; white-space:pre-wrap; }
+    .bos-metni { font-size:13px; color:#bbb; font-style:italic; }
+    textarea { width:100%; border:1px solid #ddd; border-radius:10px; padding:10px; font-size:14px; font-family:Georgia,serif; resize:vertical; outline:none; line-height:1.6; margin-top:10px; }
+    .btn-satir { display:flex; gap:8px; margin-top:10px; }
+    .kaydet-btn { padding:9px 22px; background:#1a1a2e; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-family:Georgia,serif; }
+    .sil-btn { padding:9px 16px; background:transparent; color:#e94560; border:1px solid #e94560; border-radius:8px; cursor:pointer; font-size:13px; font-family:Georgia,serif; }
+    .basari { margin-top:8px; color:#27ae60; font-size:13px; font-weight:bold; }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+const KISA = ["Pzt","Sal","Çar","Per","Cum","Cmt","Paz"];
+const UZUN = ["Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi","Pazar"];
+
+const gunAdi = t => UZUN[(t.getDay()+6)%7];
+const ayGun = (y,m) => new Date(y,m+1,0).getDate();
+const ilkGun = (y,m) => (new Date(y,m,1).getDay()+6)%7;
+const key = (y,m,g) => `${y}_${m}_${g}`;
+
+const bugun = new Date();
+const BY = bugun.getFullYear(), BA = bugun.getMonth(), BG = bugun.getDate();
+
+let state = {
+  seksiyon: "takvim",
+  ty: BY, ta: BA, tg: BG,
+  ny: BY, na: BA, ng: BG,
+  yazilan: "",
+  notlar: JSON.parse(localStorage.getItem("takvim_notlar") || "{}")
+};
+
+function setState(yeni) {
+  state = { ...state, ...yeni };
+  render();
+}
+
+function notKaydet() {
+  if (!state.yazilan.trim()) return;
+  const notlar = { ...state.notlar, [key(state.ny, state.na, state.ng)]: state.yazilan };
+  localStorage.setItem("takvim_notlar", JSON.stringify(notlar));
+  setState({ notlar, yazilan: state.yazilan });
+  document.getElementById("basari-msg").style.display = "block";
+  setTimeout(() => {
+    const el = document.getElementById("basari-msg");
+    if (el) el.style.display = "none";
+  }, 2000);
+}
+
+function notSil() {
+  const notlar = { ...state.notlar };
+  delete notlar[key(state.ny, state.na, state.ng)];
+  localStorage.setItem("takvim_notlar", JSON.stringify(notlar));
+  setState({ notlar, yazilan: "" });
+}
+
+function renderTakvim(yl, ay, secG, onGunTikla, notKontrol, navOnceki, navSonraki) {
+  const toplam = ayGun(yl, ay);
+  const bosluk = ilkGun(yl, ay);
+
+  let gunlerHTML = "";
+  for (let i = 0; i < bosluk; i++) gunlerHTML += `<div class="bos"></div>`;
+  for (let g = 1; g <= toplam; g++) {
+    const bugunBu = g===BG && ay===BA && yl===BY;
+    const seciliBu = g===secG;
+    const notBu = notKontrol(g);
+    gunlerHTML += `<button class="gun-btn${seciliBu?" secili":""}${bugunBu?" bugun":""}" onclick="${onGunTikla}(${g})">${g}${notBu?'<span class="nokta"></span>':""}</button>`;
+  }
+
+  return `
+    <div class="ay-bar">
+      <button class="nav-btn" onclick="${navOnceki}()">‹</button>
+      <b>${AYLAR[ay]} ${yl}</b>
+      <button class="nav-btn" onclick="${navSonraki}()">›</button>
+    </div>
+    <div class="grid7">${KISA.map(k=>`<div class="gun-baslik">${k}</div>`).join("")}</div>
+    <div class="gunler">${gunlerHTML}</div>
+  `;
+}
+
+window.setSeksiyon = (s) => setState({ seksiyon: s });
+window.tGunSec = (g) => setState({ tg: g });
+window.tOnceki = () => {
+  if(state.ta===0) setState({ta:11,ty:state.ty-1,tg:1});
+  else setState({ta:state.ta-1,tg:1});
+};
+window.tSonraki = () => {
+  if(state.ta===11) setState({ta:0,ty:state.ty+1,tg:1});
+  else setState({ta:state.ta+1,tg:1});
+};
+window.nGunSec = (g) => setState({ ng: g, yazilan: state.notlar[key(state.ny,state.na,g)] || "" });
+window.nOnceki = () => {
+  if(state.na===0) setState({na:11,ny:state.ny-1,ng:1,yazilan:""});
+  else setState({na:state.na-1,ng:1,yazilan:""});
+};
+window.nSonraki = () => {
+  if(state.na===11) setState({na:0,ny:state.ny+1,ng:1,yazilan:""});
+  else setState({na:state.na+1,ng:1,yazilan:""});
+};
+window.textareaGuncelle = (v) => { state.yazilan = v; };
+
+function render() {
+  const { seksiyon, ty, ta, tg, ny, na, ng, yazilan, notlar } = state;
+  const takvimNotu = notlar[key(ty,ta,tg)] || "";
+  const mevcut = notlar[key(ny,na,ng)];
+
+  document.getElementById("app").innerHTML = `
+    <div class="sekmeler">
+      <button class="sekme${seksiyon==="takvim"?" aktif":""}" onclick="setSeksiyon('takvim')">📅 Takvim</button>
+      <button class="sekme${seksiyon==="notlar"?" aktif":""}" onclick="setSeksiyon('notlar')">✏️ Notlarım</button>
+    </div>
+
+    ${seksiyon==="takvim" ? `
+      ${renderTakvim(ty,ta,tg,"tGunSec",g=>!!notlar[key(ty,ta,g)],"tOnceki","tSonraki")}
+      <div class="not-alani">
+        <div class="not-alani-baslik">${tg} ${AYLAR[ta]} ${ty} — ${gunAdi(new Date(ty,ta,tg))}</div>
+        ${takvimNotu
+          ? `<div class="not-metni">${takvimNotu}</div>`
+          : `<div class="bos-metni">Bu gün için not yok.</div>`}
+      </div>
+    ` : `
+      ${renderTakvim(ny,na,ng,"nGunSec",g=>!!notlar[key(ny,na,g)],"nOnceki","nSonraki")}
+      <div class="not-alani">
+        <div class="not-alani-baslik">${ng} ${AYLAR[na]} ${ny} — ${gunAdi(new Date(ny,na,ng))}</div>
+        <textarea rows="5" placeholder="Bu güne ait notunuzu yazın..." onchange="textareaGuncelle(this.value)" oninput="textareaGuncelle(this.value)">${yazilan}</textarea>
+        <div class="btn-satir">
+          <button class="kaydet-btn" onclick="notKaydet()">💾 Kaydet</button>
+          ${mevcut ? `<button class="sil-btn" onclick="notSil()">🗑️ Sil</button>` : ""}
+        </div>
+        <div id="basari-msg" class="basari" style="display:none">✓ Kaydedildi!</div>
+      </div>
+    `}
+  `;
+}
+
+render();
+</script>
+</body>
+  </html>
+  
